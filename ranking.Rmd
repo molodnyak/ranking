@@ -1,0 +1,1258 @@
+---
+title: "Мировые рейтинги вузов"
+output: 
+  flexdashboard::flex_dashboard:
+    #orientation: rows
+    theme: yeti
+    favicon: "https://www.hse.ru/data/2014/06/25/1309040845/znak.jpg"
+runtime: shiny
+---
+
+
+
+
+```{r setup, include=FALSE}
+Sys.setlocale("LC_ALL", "Russian_Russia")
+Sys.setlocale("LC_TIME", "C")
+options("scipen" = 999)
+#list.of.packages <- c("flexdashboard", "plotly", "shiny", "kableExtra", "knitr", "DT", "treemapify", "googleVis")
+#new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+#if(length(new.packages)) install.packages(new.packages, dependencies=TRUE)
+library(flexdashboard)
+library(shiny)
+library(plotly)
+library(knitr)
+library(kableExtra)
+library(DT)
+library(ggplot2)
+library(treemapify) # Tree
+library(googleVis) # Map
+library(RColorBrewer)
+### Data  
+ranking <- readRDS("ranking.rds")
+ranking <- ranking[ranking$year %in% 2014:2018, ]
+```
+
+
+Structure 
+=====================================
+
+Оглавление {.sidebar}
+-------------------------------------
+
+<hr>
+[Top](#section-top) \
+<hr>
+[Rankings: Институциональные рейтинги](#dashboard-3) \
+[Rankings: Предметные рейтинги](#dashboard-5) \
+[Rankings: Отраслевые рейтинги](#dashboard-6) \
+<hr>
+[Treemap](#section-tree) \
+<hr>
+[Map](#section-map) \
+<hr>
+[University: Profile](#section-profile) \
+[University: Compare](#section-compare) \
+<hr>
+
+Column {data-width=400}
+-------------------------------------
+
+### **Сводные данные рейтингов** {data-height=480} 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+Y <- aggregate(INSTITUTION ~ rating + rGroup + year, ranking, function(x) length(unique(x)))
+Y <- Y[with(Y, order(year)), ]
+Y <- reshape(Y, idvar = c('rating', 'rGroup'), timevar = "year", direction = "wide")
+Y <- Y[with(Y, order(rating, rGroup)), ]
+names(Y) <- sub("INSTITUTION.", "", names(Y))
+names(Y)[names(Y)=="rating"] <- "Название рейтинга"
+names(Y)[names(Y)=="rGroup"] <- "Группа рейтингов"
+row.names(Y) <- 1:nrow(Y)
+
+
+renderDataTable(rownames = FALSE, class = 'cell-border stripe table-condensed', { 
+  Y
+  }, options = list(info = F, paging = F, searching = F, ordering = F, initComplete = JS("function(settings, json) {", "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});","}"), columnDefs = list(list(className = 'dt-left', targets = '_all'))), caption = 'с указанием числа вузов')
+
+```
+
+### **Сводные данные отраслевых рейтингов** {data-height=520} 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+Yf <- aggregate(INSTITUTION ~ rating + Field + year, ranking[ranking$rGroup == "Отраслевой",], function(x) length(unique(x)))
+Yf <- Yf[with(Yf, order(year)), ]
+Yf <- reshape(Yf, idvar = c('rating', 'Field'), timevar = "year", direction = "wide")
+Yf <- Yf[with(Yf, order(rating, Field)), ]
+names(Yf) <- sub("INSTITUTION.", "", names(Yf))
+names(Yf)[names(Yf)=="rating"] <- "Название рейтинга"
+names(Yf)[names(Yf)=="Field"] <- "Отрасль"
+row.names(Yf) <- 1:nrow(Yf)
+
+
+renderDataTable(rownames = FALSE, class = 'cell-border stripe table-condensed', { 
+  Yf
+  }, options = list(info = F, paging = F, ordering = F, searching = F, initComplete = JS("function(settings, json) {", "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});","}"), columnDefs = list(list(className = 'dt-left', targets = '_all'))), caption = 'с указанием числа вузов')
+
+```
+
+
+Column {data-width=400}
+-------------------------------------
+
+### **Сводные данные предметных рейтингов**
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+Ys <- aggregate(INSTITUTION ~ rating + Subject + year, ranking[ranking$rGroup == "Предметный",], function(x) length(unique(x)))
+Ys <- Ys[with(Ys, order(year)), ]
+Ys <- reshape(Ys, idvar = c('rating', 'Subject'), timevar = "year", direction = "wide")
+Ys <- Ys[with(Ys, order(rating, Subject)), ]
+names(Ys) <- sub("INSTITUTION.", "", names(Ys))
+names(Ys)[names(Ys)=="rating"] <- "Название рейтинга"
+names(Ys)[names(Ys)=="Subject"] <- "Предмет"
+row.names(Ys) <- 1:nrow(Ys)
+
+renderDataTable(rownames = FALSE, class = 'cell-border stripe table-condensed', { 
+  Ys
+  }, options = list(info = F, paging = F, ordering = F, searching = T, scrollCollapse = T, scrollX = T, sScrollY = '78vh', initComplete = JS("function(settings, json) {", "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});","}"), columnDefs = list(list(className = 'dt-left', targets = '_all'))), caption = 'с указанием числа вузов')
+```
+
+
+
+
+
+
+Top 
+=====================================
+
+Column {data-width=350}
+-------------------------------------
+
+### **Фильтры** {data-height=280}   
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+h5('Выберите институциональный рейтинг')
+radioButtons('rankingTop', NULL, sort(unique(ranking$rating)), selected = "QS", inline = T, width = '100%')
+h5('Выберите группу позиций в институциональном рейтинге')
+#renderUI({
+#  selectizeInput('group', NULL, choices = sort(unique(ranking$group[!is.na(ranking$group) & ranking$rGroup == "Предметный" & #ranking$rating == input$rankingTop])), width = 400)
+#  })
+checkboxGroupInput('group', NULL, sort(unique(ranking$group))[c(1,3:7,2)], selected = "1-100", inline = T, width = '100%')
+h5('Укажите год')
+radioButtons('year', NULL, sort(unique(ranking$year)), selected = "2017", inline = T, width = '100%')
+``` 
+
+### **Статистика предметного рейтинга** {data-height=160}   
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+xx <- reactive({
+#  xx1 <- aggregate(Subject ~ year, ranking[ranking$rGroup == 'Предметный' & ranking$rating == input$rankingTop,], function(x) #length(unique(x)))
+#  xx1 <- data.frame(t(xx1), stringsAsFactors = F)
+#  row.names(xx1) <- c("Год", "Число предметов")
+#  names(xx1) <- xx1[1,]
+#  xx1 <- xx1[-1,]
+#  xx1
+  xx1 <- aggregate(Subject ~ year, ranking[ranking$rGroup == 'Предметный' & ranking$rating == input$rankingTop,], function(x) length(unique(x)))
+  yy1 <- aggregate(RankFloor ~ year, ranking[ranking$rGroup == 'Предметный' & ranking$rating == input$rankingTop,], function(x) min(unique(x)))
+  xx2 <- aggregate(RankCeiling ~ year, ranking[ranking$rGroup == 'Предметный' & ranking$rating == input$rankingTop,], function(x) max(unique(x)))
+  yy1[,2] <- sprintf("%d - %d", yy1[,2], xx2[,2])
+  #yy1 <- data.frame(t(yy1), stringsAsFactors = F)
+  yy1 <- data.frame("Показатель" = c("Год", "Диапазон позиций"), t(yy1[,1:ncol(yy1)]), stringsAsFactors = F)
+  row.names(yy1) <- 1:nrow(yy1)
+  #row.names(yy1) <- c("Год", "Диапазон позиций")
+  #names(yy1) <- yy1[1,]
+  names(yy1) <-  yy1[yy1$`Показатель` == "Год", ]
+  #yy1 <- yy1[-1,]
+  yy1 <- yy1[yy1$`Год` == "Диапазон позиций", ]
+  #xx1 <- data.frame(t(xx1), stringsAsFactors = F)
+  #row.names(xx1) <- c("Год", "Число предметов")
+  xx1 <- data.frame("Показатель" = c("Год", "Предметы"), t(xx1[,1:ncol(xx1)]), stringsAsFactors = F)
+  row.names(xx1) <- 1:nrow(xx1)
+  #names(xx1) <- xx1[1,]
+  names(xx1) <-  xx1[xx1$`Показатель` == "Год", ]
+  #xx1 <- xx1[-1,]
+  xx1 <- xx1[xx1$`Год` == "Предметы", ]
+  xx1 <- rbind(xx1, yy1)
+  rm(yy1)
+  xx1
+
+})
+
+renderDataTable(rownames = FALSE, { 
+  xx()
+  }, options = list(ordering=F, info = F, paging = F, searching = F, scrollCollapse = F)) #caption = 'Количество предметов в рейтинге'
+```
+
+### {data-height=460}   
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dataTopg <- reactive({
+  x0 <- ranking[ranking$rGroup == 'Институциональный' & ranking$rating == input$rankingTop & ranking$year == input$year & ranking$group %in%  input$group, c('rating', "INSTITUTION", 'Country', "year")]
+  y0 <- ranking[ranking$rGroup == 'Предметный' & ranking$rating == input$rankingTop & ranking$year == input$year, c('rating', "INSTITUTION", 'Country', "year", "group")]
+  validate(need(nrow(y0) > 0, "Нет данных для выбранного периода!"))
+  library(plyr)
+  y0 <- ddply(y0, .(group, INSTITUTION), summarise, quantity = length(INSTITUTION), .drop=FALSE)
+  xy0 <- merge(x0, y0, by = c("INSTITUTION"), all.x = T)
+  xy0 <- xy0[with(xy0, order(INSTITUTION, group)), ]
+  #xy0 <- aggregate(quantity ~ group, xy0, median)
+  xy0
+  })
+
+library(plotly)
+renderPlotly({
+  validate(need(nrow(dataTopg()) > 0, "Нет данных для выбранного рейтинга!"))
+  plot_ly(dataTopg(), y = ~quantity, color = ~factor(group), type = "box", hoverinfo = "y", showlegend = FALSE)%>%
+    layout(title = paste0(rTop(), " : Распределение числа предметов у вузов ", paste0(gsub("-.*", "", paste(gTop(), collapse = ",")), "-", gsub(".*-", "", paste(gTop(), collapse = ",")))), 
+           xaxis = list(title = "Группы позиций в предметном рейтинге"),
+           yaxis = list(title = ""), 
+           margin = list(l=50, r=50, b=60, t=100, pad=4), showlegend = FALSE) %>%
+    config(staticPlot = F, displayModeBar = T, workspace = F, editable = F, sendData = F, displaylogo = F, modeBarButtonsToRemove = list('sendDataToCloud','resetScale2d','hoverClosestGl2d','hoverClosestPie','hoverClosestCartesian','hoverCompareCartesian','toggleHover','resetViews','zoom2d','pan2d','select2d','lasso2d','zoomInGeo','zoomOutGeo','resetGeo','hoverClosestGeo','Сollaborate','zoomIn2d','zoomOut2d','autoScale2d')) # working settings: 'toImage')
+})
+```
+
+### {data-height=100}   
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+em("Значения на диаграмме Boxplot. Сверху вниз: Максимум, Статистически значимый максимум (вверху выбросы), 3-й квартиль (75-й персентиль), Медиана, 1-й квартиль (25-й персентиль), Статистически значимый минимум (внизу выбросы), Минимум")
+```
+
+
+Column {data-width=650}
+-------------------------------------
+
+### **Распределение количества предметных рейтингов по группам позиций в институциональном рейтинге** {data-height=490}   
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(plotly)
+dataTop <- reactive({
+  y1 <- plyr::count(ranking[ranking$rGroup == 'Предметный' & ranking$rating == input$rankingTop, c('rating', "INSTITUTION", 'Country', "year")])
+  x1 <- ranking[ranking$rGroup == 'Институциональный' & ranking$rating == input$rankingTop, c('rating', "group", "INSTITUTION", 'Country', "year")]
+  xy1 <- merge(x1, y1, by = c('rating', "INSTITUTION", 'Country', "year"), all.x = T)
+  xy1$freq[is.na(xy1$freq)] <- 0
+  xy1 <- xy1[xy1$group %in% input$group, ]
+  xy1
+  })
+
+gTop <- reactive({input$group})
+rTop <- reactive({input$rankingTop})
+
+renderPlotly({
+  plot_ly(dataTop(), y = ~freq, color = ~factor(year), type = "box", hoverinfo = "y", showlegend = FALSE) %>%
+    layout(title = paste0(rTop(), " : предметные рейтинги вузов с позициями ", paste0(gsub("-.*", "", paste(gTop(), collapse = ",")), "-", gsub(".*-", "", paste(gTop(), collapse = ","))), " в институциональном"), 
+           xaxis = list(title = ""),
+           yaxis = list(title = ""), 
+           margin = list(l=100, r=100, b=30, t=50, pad=4), showlegend = FALSE) %>%
+    config(staticPlot = F, displayModeBar = T, workspace = F, editable = F, sendData = F, displaylogo = F, modeBarButtonsToRemove = list('sendDataToCloud','resetScale2d','hoverClosestGl2d','hoverClosestPie','hoverClosestCartesian','hoverCompareCartesian','toggleHover','resetViews','zoom2d','pan2d','select2d','lasso2d','zoomInGeo','zoomOutGeo','resetGeo','hoverClosestGeo','Сollaborate','zoomIn2d','zoomOut2d','autoScale2d')) 
+  # working settings: 'toImage')
+})
+```
+
+### {data-height=510}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+yTop <- reactive({
+  #yTop1 <- dataTop()[with(dataTop(), order(year)), ]
+  yTop1 <- reshape(dataTop(), idvar = c('rating', 'group', 'INSTITUTION', 'Country'), timevar = "year", direction = "wide")
+  row.names(yTop1) <- 1:nrow(yTop1)
+  names(yTop1) <- sub("freq.", "", names(yTop1))
+  yTop1
+})
+
+renderDataTable(rownames = FALSE, filter = 'top', { 
+  yTop()
+  }, options = list(info = F, paging = F, searching = T, scrollCollapse = T, scrollX = T, sScrollY = '30vh'), caption = 'Количество предметов в предметных рейтингах в каждой группе позиций')
+```
+
+
+
+
+
+
+
+
+
+Институциональные {data-navmenu="Rankings"}   
+=====================================
+
+Column {data-width=250}
+-------------------------------------
+   
+### **Фильтры** {data-height=450}   
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+h5('Укажите год')
+radioButtons('yearInst', NULL, sort(unique(ranking$year[ranking$rGroup == "Институциональный"])), 
+             selected = 2017, inline = T, width = '100%')
+h5('Выберите рейтинг')
+selectInput('rankingInst', NULL, sort(unique(ranking$rating[ranking$rGroup == "Институциональный"])), 
+              selected = "QS", width = '100%')
+h5('Выберите страну')
+selectInput('CountryInst', NULL, sort(unique(ranking$Country[ranking$rGroup == "Институциональный"])), selected = "Russia", width = '100%')
+
+```   
+
+
+### **Данные** {data-height=550}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+renderDataTable(rownames = FALSE, colnames = c('Вуз', 'Позиция', 'Место'), class = 'cell-border stripe table-condensed', { 
+  dataInst()[,c(3:4,7)]
+  }, options = list(info = F, paging = F, searching = F, scrollCollapse = T, scrollX = TRUE, sScrollY = '44vh', initComplete = JS("function(settings, json) {", "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});","}"), columnDefs = list(list(className = 'dt-left', targets = '_all'))))
+
+```
+
+
+ 
+
+Column {data-width=750}
+-------------------------------------
+
+### **Распределение мест в институциональных рейтингах** {data-height=160}
+
+```{r}
+h5('Укажите диапазон позиций')
+sliderInput("rank", NULL, min=1, max=1250, value=c(1,700), step = 50, width = '100%')
+```
+
+### {data-height=840}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dataInst <- reactive({
+  
+  validate(
+      need(input$rankingInst %in% unique(ranking$rating[ranking$year == input$yearInst]), 
+           paste0("Доступные периоды для выбранного рейтинга:\n", 
+                  paste(as.character(sort(unique(ranking$year[ranking$rating == input$rankingInst]))), collapse = "\n")))
+    )
+  
+  y <- ranking[ranking$rating == input$rankingInst & ranking$year == input$yearInst & ranking$Country == input$CountryInst & ranking$rGroup == 'Институциональный' & ranking$RankCeiling <= input$rank[2] & ranking$RankFloor >= input$rank[1], c("rating", "year", "INSTITUTION", "Rank", "RankFloor", "RankCeiling")]
+  y$INSTITUTION <- factor(y$INSTITUTION, levels = y$INSTITUTION[order(-y$RankFloor)])
+  y$rank <- rank(y$RankFloor, ties.method="min")
+  y <- y[with(y, order(rank)), ]
+  y
+  })
+
+x <- reactive({paste(input$rankingInst, input$CountryInst, input$yearInst, paste0("Число вузов: ", nrow(dataInst())), 
+                     paste0("Позиции: ", input$rank[1], "-", input$rank[2]), sep = " - ")})
+
+renderPlotly({
+  plot_ly(dataInst(), marker = list(size = 10)) %>%
+    add_segments(x = ~RankFloor, xend = ~RankCeiling, y = ~INSTITUTION, yend = ~INSTITUTION, showlegend = FALSE, 
+                 line = list(color = 'rgba(153, 153, 153, .6)', width = 6)) %>% 
+    add_markers(x = ~RankFloor, y = ~INSTITUTION, name = " ", color = I("blue")) %>%
+    add_markers(x = ~RankCeiling, y = ~INSTITUTION, name = " ", color = I("red")) %>%
+    layout(autosize = T, #height = 400, width = 'auto',  
+           title = x(),
+           xaxis = list(title = "Позиция в рейтинге"), 
+           yaxis = list(title = "", autotick = T, tickfont = list(size = 12)), 
+           margin = list(l = 350, t = 60, b = 60, r = 60), 
+           showlegend = FALSE
+    ) %>%
+    config(staticPlot = F, displayModeBar = T, workspace = F, editable = F, sendData = F, displaylogo = F, modeBarButtonsToRemove = list('sendDataToCloud','resetScale2d','hoverClosestGl2d','hoverClosestPie','hoverClosestCartesian','hoverCompareCartesian','toggleHover','resetViews','zoom2d','pan2d','select2d','lasso2d','zoomInGeo','zoomOutGeo','resetGeo','hoverClosestGeo','Сollaborate','zoomIn2d','zoomOut2d','autoScale2d'))
+})
+
+```
+
+
+
+
+
+
+Предметные {data-navmenu="Rankings"}
+=====================================
+
+  
+
+Column {data-width=250}
+-------------------------------------
+   
+### **Фильтры** {data-height=600}   
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+h5('Укажите год')
+radioButtons('yearS', NULL, sort(unique(ranking$year[ranking$rGroup == "Предметный"])), 
+             selected = "2017", inline = T, width = '100%')
+h5('Выберите рейтинг')
+selectInput('rankingS', NULL, "QS", 
+              selected = "QS", width = '100%')
+h5('Выберите страну')
+selectInput('CountryS', NULL, sort(unique(ranking$Country)), selected = "United Kingdom", width = '100%')
+h5('Выберите предмет')
+renderUI({
+  selectizeInput('subject', NULL, choices = sort(unique(ranking$Subject[ranking$rGroup == "Предметный" & ranking$rating == input$rankingS  & ranking$Country == input$CountryS & ranking$year == input$yearS])), width = '100%')
+  })
+```   
+
+<!---### {data-height=40}
+<img style="float: left;" src="http://www.shanghairanking.com/image/flag/Argentina.png" alt="Country" height="40" width="60"> 
+-->
+
+### **Данные** {data-height=500}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+renderDataTable(rownames = FALSE, colnames = c('Вуз', 'Позиция', 'Место'), class = 'cell-border stripe table-condensed', { 
+  dataS()[,c(4:5,8)]
+  }, options = list(info = F, paging = F, searching = F, scrollCollapse = T, scrollX = TRUE, sScrollY = '35vh', initComplete = JS("function(settings, json) {", "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});","}"), columnDefs = list(list(className = 'dt-left', targets = '_all'))))
+```
+
+ 
+
+Column {data-width=750}
+-------------------------------------
+
+### **Распределение мест в предметных рейтингах** {data-height=160}
+
+```{r}
+h5('Укажите диапазон позиций')
+sliderInput("rankS", NULL, min=1, max=500, value=c(1,400), step = 50, width = '100%')
+```
+
+### {data-height=840}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dataS <- reactive({
+  
+    validate(
+      need(input$subject %in% unique(ranking$Subject[ranking$rating == input$rankingS]), 
+           paste(
+           paste0("Доступные предметы для выбранного рейтинга:\n", 
+                  paste(as.character(sort(unique(ranking$Subject[ranking$rating == input$rankingS & ranking$year == input$yearS & ranking$Country == input$CountryS]))), collapse = "  |  ")), 
+           paste0("\n\nДоступные рейтинги для выбранного предмета:\n", 
+                  paste(as.character(sort(unique(ranking$rating[ranking$Subject == input$subject]))), collapse = "\n")), 
+           collapse = "\n"))
+    )
+  validate(
+      need(input$subject %in% unique(ranking$Subject[ranking$year == input$yearS & ranking$rating == input$rankingS & ranking$Country == input$CountryS]), 
+           paste0("Доступные периоды для выбранного рейтинга:\n", 
+                  paste(as.character(sort(unique(ranking$year[ranking$Subject == input$subject & ranking$Country == input$CountryS &
+                                                                ranking$rating == input$rankingS]))), collapse = "\n")))
+  )
+  validate(
+      need(input$yearS %in% unique(ranking$year[ranking$rating == input$rankingS]), 
+           paste0("Доступные рейтинги для выбранного периода:\n", 
+                  paste(as.character(sort(unique(ranking$rating[ranking$year == input$yearS & ranking$Subject == input$subject & ranking$Country == input$CountryS]))), collapse = "\n")))
+    )
+  
+  yS <- ranking[ranking$rGroup == "Предметный" & ranking$Subject == input$subject & ranking$year == input$yearS & ranking$Country == input$CountryS  & ranking$rating == input$rankingS & ranking$RankCeiling <= input$rankS[2] & ranking$RankFloor >= input$rankS[1], c("rating", "Subject", "year", "INSTITUTION", "Rank", "RankFloor", "RankCeiling")]
+  yS$INSTITUTION <- factor(yS$INSTITUTION, levels = yS$INSTITUTION[order(-yS$RankFloor)])
+  yS$rank <- rank(yS$RankFloor, ties.method="min")
+  yS <- yS[with(yS, order(rank)), ]
+  yS
+  })
+
+xS <- reactive({paste(input$rankingS, input$subject, input$CountryS, input$yearS, paste0("Число вузов: ", nrow(dataS())), 
+                     paste0("Позиции: ", input$rankS[1], "-", input$rankS[2]), sep = " - ")})
+
+renderPlotly({
+  plot_ly(dataS(), marker = list(size = 10)) %>%
+    add_segments(x = ~RankFloor, xend = ~RankCeiling, y = ~INSTITUTION, yend = ~INSTITUTION, showlegend = FALSE, 
+                 line = list(color = 'rgba(153, 153, 153, .6)', width = 6)) %>% 
+    add_markers(x = ~RankFloor, y = ~INSTITUTION, name = " ", color = I("blue")) %>%
+    add_markers(x = ~RankCeiling, y = ~INSTITUTION, name = " ", color = I("red")) %>%
+    layout(autosize = T, #height = 400, width = 'auto',  
+           title = xS(),
+           xaxis = list(title = "Позиция в рейтинге"), 
+           yaxis = list(title = "", autotick = T, tickfont = list(size = 12)), 
+           margin = list(l = 350, t = 60, b = 60, r = 60), 
+           showlegend = FALSE
+    ) %>%
+    config(staticPlot = F, displayModeBar = T, workspace = F, editable = F, sendData = F, displaylogo = F, modeBarButtonsToRemove = list('sendDataToCloud','resetScale2d','hoverClosestGl2d','hoverClosestPie','hoverClosestCartesian','hoverCompareCartesian','toggleHover','resetViews','zoom2d','pan2d','select2d','lasso2d','zoomInGeo','zoomOutGeo','resetGeo','hoverClosestGeo','Сollaborate','zoomIn2d','zoomOut2d','autoScale2d'))
+})
+hr()
+br()
+```
+
+
+
+
+
+
+Отраслевые {data-navmenu="Rankings"}
+=====================================
+
+Column {data-width=250}
+-------------------------------------
+   
+### **Фильтры** {data-height=600}   
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+h5('Укажите год')
+radioButtons('yearF', NULL, sort(unique(ranking$year[ranking$rGroup == "Отраслевой"])), 
+             selected = 2017, inline = T, width = '100%')
+h5('Выберите рейтинг')
+selectInput('rankingF', NULL, sort(unique(ranking$rating[ranking$rGroup == "Отраслевой"])), 
+              selected = "QS", width = '100%')
+h5('Выберите страну')
+#renderUI({
+#  selectizeInput('CountryF', NULL, choices = sort(unique(ranking$Country[ranking$rGroup == "Отраслевой" & ranking$rating == #input$rankingF & ranking$year == input$yearF])), width = '100%')
+#  })
+selectInput('CountryF', NULL, sort(unique(ranking$Country[ranking$rGroup == "Отраслевой"])), selected = "United Kingdom", width = '100%') #, multiple = T)
+h5('Выберите отрасль')
+renderUI({
+  selectizeInput('field', NULL, choices = sort(unique(ranking$Field[ranking$rGroup == "Отраслевой" & ranking$rating == input$rankingF  & ranking$Country %in% input$CountryF & ranking$year == input$yearF])), width = '100%')
+  })
+``` 
+
+### **Данные** {data-height=500}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+renderDataTable(rownames = FALSE, colnames = c('Вуз', 'Позиция', 'Место'), class = 'cell-border stripe table-condensed', { 
+  dataF()[,c(4:5,8)]
+  }, options = list(info = F, paging = F, searching = F, scrollCollapse = T, scrollX = TRUE, sScrollY = '35vh', initComplete = JS("function(settings, json) {", "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});","}"), columnDefs = list(list(className = 'dt-left', targets = '_all'))))
+```
+
+ 
+
+Column {data-width=750}
+-------------------------------------
+
+### **Распределение мест в отраслевых рейтингах** {data-height=160}
+
+```{r}
+h5('Укажите диапазон позиций')
+sliderInput("rankF", NULL, min=1, max=500, value=c(1,400), step = 50, width = '100%')
+```
+
+### {data-height=840}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dataF <- reactive({
+  
+    validate(
+      need(input$field %in% unique(ranking$Field[ranking$rating == input$rankingF]), 
+           paste(
+           paste0("Доступные отрасли для выбранного рейтинга:\n", 
+                  paste(as.character(sort(unique(ranking$Field[ranking$rating == input$rankingF & ranking$year == input$yearF & ranking$Country %in% input$CountryF]))),  
+           collapse = "\n")))),
+
+      need(input$yearF %in% unique(ranking$year[ranking$rating == input$rankingF & ranking$rGroup == "Отраслевой" & ranking$Country %in% input$CountryF]), 
+           paste0("Доступные отрасли для выбранного периода:\n", 
+                  paste(as.character(sort(unique(ranking$Field[ranking$year == input$yearF & ranking$rating == input$rankingF & ranking$Country %in% input$CountryF]))), collapse = "\n"))),
+
+      need(input$field %in% unique(ranking$Field[ranking$year == input$yearF & ranking$rating == input$rankingF & ranking$Country %in% input$CountryF]), 
+           paste0("Доступные периоды для выбранного рейтинга:\n", 
+                  paste(as.character(sort(unique(ranking$year[!is.na(ranking$Field) & ranking$rGroup == "Отраслевой" & ranking$Country %in% input$CountryF & ranking$rating == input$rankingF]))), collapse = "\n")))
+  )
+  
+  yF <- ranking[ranking$rGroup == "Отраслевой" & ranking$Field == input$field & ranking$year == input$yearF & ranking$Country %in% input$CountryF  & ranking$rating == input$rankingF & ranking$RankCeiling <= input$rankF[2] & ranking$RankFloor >= input$rankF[1], c("rating", "Field", "year", "INSTITUTION", "Rank", "RankFloor", "RankCeiling")]
+  yF$INSTITUTION <- factor(yF$INSTITUTION, levels = yF$INSTITUTION[order(-yF$RankFloor)])
+  yF$rank <- rank(yF$RankFloor, ties.method="min")
+  yF <- yF[with(yF, order(rank)), ]
+  yF
+  })
+
+xF <- reactive({paste(input$rankingF, input$field, input$CountryF, input$yearF, paste0("Число вузов: ", nrow(dataF())), 
+                     paste0("Позиции: ", input$rankF[1], "-", input$rankF[2]), sep = " - ")})
+
+renderPlotly({
+  plot_ly(dataF(), marker = list(size = 10)) %>%
+    add_segments(x = ~RankFloor, xend = ~RankCeiling, y = ~INSTITUTION, yend = ~INSTITUTION, showlegend = FALSE, 
+                 line = list(color = 'rgba(153, 153, 153, .6)', width = 6)) %>% 
+    add_markers(x = ~RankFloor, y = ~INSTITUTION, name = " ", color = I("blue")) %>%
+    add_markers(x = ~RankCeiling, y = ~INSTITUTION, name = " ", color = I("red")) %>%
+    layout(autosize = T, #height = 400, width = 'auto',  
+           title = xF(),
+           xaxis = list(title = "Позиция в рейтинге"), 
+           yaxis = list(title = "", autotick = T, tickfont = list(size = 12)), 
+           margin = list(l = 350, t = 60, b = 60, r = 60), 
+           showlegend = FALSE
+    ) %>%
+    config(staticPlot = F, displayModeBar = T, workspace = F, editable = F, sendData = F, displaylogo = F, modeBarButtonsToRemove = list('sendDataToCloud','resetScale2d','hoverClosestGl2d','hoverClosestPie','hoverClosestCartesian','hoverCompareCartesian','toggleHover','resetViews','zoom2d','pan2d','select2d','lasso2d','zoomInGeo','zoomOutGeo','resetGeo','hoverClosestGeo','Сollaborate','zoomIn2d','zoomOut2d','autoScale2d'))
+})
+hr()
+br()
+```
+
+
+
+
+Tree
+=====================================
+
+Column {data-width=300}
+-------------------------------------
+
+### **Фильтры** {data-height=600}   
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+h5('Укажите год')
+radioButtons('yearST', NULL, sort(unique(ranking$year[ranking$rGroup == "Предметный"])), selected = 2017, inline = T, width = '100%')
+h5('Выберите рейтинг')
+radioButtons('rankingST', NULL, sort(unique(ranking$rating[ranking$rGroup == "Предметный"])), selected = "QS", inline = T, width = '100%')
+h5('Укажите диапазон позиций в предметном рейтинге')
+sliderInput("rankST", NULL, min=1, max=501, value=c(1,401), step = 50, width = '100%')
+h5('Выберите страну')
+selectInput('CountryST', NULL, sort(unique(ranking$Country[ranking$rGroup == "Предметный"])), selected = "Russia", width = 400)
+``` 
+
+### **Структура предметных рейтингов** {data-height=400} 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+renderDataTable(rownames = FALSE, colnames = c('Рейтинг', 'Страна', 'Предмет', 'Отрасль', 'Кол-во позиций'), { 
+  dataST()[,-5]
+  }, options = list(info = F, paging = F, searching = F, scrollCollapse = T, sScrollY = '28vh'), 
+  extensions = list("Scroller"))
+```
+
+Column {data-width=700}
+-------------------------------------
+
+
+### **Предметная карта** {data-height=1000}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=6, fig.align='left'}
+dataST <- reactive({
+  STuni <- ranking$INSTITUTION[ranking$rGroup == "Предметный" & ranking$RankCeiling <= (input$rankST[2]-1) & ranking$RankFloor >= input$rankST[1]]
+  ST <- plyr::count(ranking[ranking$rGroup == "Предметный" & ranking$rating == input$rankingST & ranking$Country == input$CountryST & ranking$year == input$yearST & ranking$INSTITUTION %in% STuni, c("rating", "Country", "Subject", "Field", "FieldColor")])
+  validate(need(nrow(ST) > 0, "Нет данных("))
+  x <- aggregate(freq ~ Field + FieldColor, ST, sum)
+  x <- x[order(-x$freq),]
+  ST <- merge(data.frame("Field"=x$FieldColor), ST, by="Field", all.y = T)
+  ST$Field <- as.factor(ST$Field)
+  ST
+})
+
+grankingST <- reactive({input$rankingST})
+gTopST <- reactive({paste(input$rankST[1], (input$rankST[2]-1), sep = "-")})
+gCountryST <- reactive({input$CountryST})
+gyearST <- reactive({input$yearST})
+#colorST <- reactive({
+#  x <- aggregate(freq ~ Field + FieldColor, dataST(), sum)
+#  x <- x[order(-x$freq),]
+#  x$FieldColor
+#})
+
+renderPlot({ggplot(dataST(), aes(area = freq, fill = Field, label=paste0(Subject, "\n[", freq, "]"), subgroup=Field)) + 
+  geom_treemap() + 
+  guides(fill=guide_legend(title="", ncol=6, byrow=TRUE)) +
+  theme(legend.position="bottom", legend.key.width=unit(0.8,"cm"), legend.title=element_text(size=20), legend.text=element_text(size=18)) +
+  geom_treemap_text(colour = "black", place = "centre", grow = F, reflow = T) + 
+  # geom_treemap_subgroup_text(place = "bottom", grow = T, alpha = 0.5, colour = "#FAFAFA", min.size = 0, reflow = T) + 
+  scale_fill_manual(values = unique(dataST()$FieldColor)) +
+  # scale_fill_manual(values = colorST()) + 
+  # scale_fill_brewer(palette="Set1") + 
+  ggtitle(paste(paste0(grankingST(),":"), "Предметные рейтинги по отраслям с позициями", gTopST(), "в предметном.", gCountryST(), gyearST())) + 
+  theme(plot.title = element_text(size=16, face="bold"))
+})
+```
+
+
+Map
+=====================================
+
+Column {data-width=300}
+-------------------------------------
+   
+### Фильтры {data-height=300}  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+h5('Выберите рейтинги')
+checkboxGroupInput('rankingM', NULL, choices = sort(unique(ranking$rating)), selected = "QS", inline = T, width = '100%')
+h5('Укажите тип рейтинга')
+checkboxGroupInput('groupM', NULL, choices = c("Институциональный", "Предметный", "Отраслевой"), selected = "Институциональный", inline = T, width = '100%')
+h5('Укажите год')
+radioButtons('yearM', NULL, sort(unique(ranking$year)), selected = 2017, inline = T, width = '100%')
+```
+
+### Данные выбранного рейтинга {data-height=700}   
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+xM <- reactive({
+  xM <- ranking[ranking$rating %in% input$rankingM & ranking$year == input$yearM & ranking$rGroup %in% input$groupM,]
+  validate(need(nrow(xM) > 0, "Укажите рейтинг!"))
+  xM <- aggregate(INSTITUTION ~ year + Country, xM, function(x) length(unique(x)))
+  xM$Rank <- rank(-xM$INSTITUTION, ties.method="min")
+  xM[with(xM, order(Rank)), ]
+})
+#zM <- reactive(paste0("Число вузов в рейтинге: ", paste(input$rankingM, input$groupM, input$yearM, sep = " - ")))
+renderDataTable(rownames = FALSE, colnames = c('Год', 'Страна', 'Кол-во университетов', '№'), { 
+  xM()
+  }, options = list(info = F, paging = F, searching = T, scrollCollapse = T, scrollX = TRUE, sScrollY = '50vh'), 
+  caption = 'Количество университетов каждой страны в рейтинге')
+```
+
+Column {data-width=700}
+-----------------------------------------------------------------------
+
+### Мировая карта рейтингов {data-height=1000}
+
+```{r}
+#renderText(zM())
+#create a ui interaction:
+uiOutput("dynamicMap")
+#regM <- reactive()
+#render the ui:
+output$dynamicMap <- renderGvis({ 
+  gvisGeoChart(xM(), locationvar="Country", colorvar="INSTITUTION", 
+               options=list(colorAxis="{colors: ['white', 'cyan', 'blue', 'pink']}", projection="kavrayskiy-vii", width='100%', height='100%'))       # region='154', displayMode='markers',
+  })
+```
+
+
+
+
+
+
+Profile {data-navmenu="University"}
+=====================================
+
+Column {data-width=200}
+-------------------------------------
+   
+### Фильтры {data-height=570} 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+h5('Укажите год')
+radioButtons('yearU', NULL, sort(unique(ranking$year)), selected = 2017, inline = T, width = '100%')
+h5('Выберите страну')
+selectInput('CountryU', NULL, sort(unique(ranking$Country)), selected = "Russia", width = '100%') #, multiple = T)
+h5('Выберите университет')
+renderUI({
+  selectizeInput('institution', NULL, choices = sort(unique(ranking$INSTITUTION[ranking$Country == input$CountryU])), selected = "National Research University Higher School of Economics", width = '100%')
+  })
+```
+
+   
+### **Институциональный** {data-height=215} 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+em("Нижняяя и верхняя границы позиции вуза в институциональном рейтинге")
+```
+
+### **Предметные** {data-height=215} 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+em("World - Среднее количество предметов у вуза в рейтинге, Russia - Среднее количество предметов у российского вуза в рейтинге, University - Количество предметов у выбранного вуза")
+```
+
+
+Column {data-width=180}
+-----------------------------------------------------------------------
+
+**QS World University Rankings**
+
+### {data-height=100}
+
+```{r}
+QSI <- reactive({
+  N1 <- ranking$Rank[ranking$rating == "QS" & ranking$rGroup == "Институциональный" & ranking$INSTITUTION == input$institution & ranking$Country == input$CountryU & ranking$year == input$yearU]
+  N1 <- ifelse(length(N1) == 0, NA, N1)
+  N1
+  })
+renderValueBox({ 
+    valueBox(renderText(QSI()), caption = "Позиция в институциональном рейтинге", color = "gold")
+  })
+```
+
+### {data-height=100}
+
+```{r}
+QSs <- reactive({
+  N1s <- ranking[ranking$rating == "QS" & ranking$rGroup == "Предметный" & ranking$INSTITUTION == input$institution & ranking$Country == input$CountryU & ranking$year == input$yearU, c("Subject", "Rank")]
+  if(nrow(N1s) == 0){ 
+    N1s <- NA } else {
+      N1s <- N1s
+    }
+  N1s
+  })
+renderValueBox({ 
+    valueBox(renderText(nrow(QSs())), caption = "Всего предметов", color = "gold") #, icon = "glyphicon-indent-left"
+  })
+```
+
+### {data-height=300}
+
+```{r}
+renderDataTable(rownames = FALSE, colnames = c('Предмет', 'Позиция'), { 
+  validate(need(nrow(QSs()) > 0, "Нет данных для выбранного периода!"))
+  QSs()
+  }, options = list(info = F, paging = F, searching = F, scrollCollapse = T, scrollX = TRUE, sScrollY = '20vh'))
+```
+
+### {data-height=250}
+
+```{r}
+QSt <- reactive({
+  N1t <- ranking[ranking$rating == "QS" & ranking$rGroup == "Институциональный" & ranking$INSTITUTION == input$institution & ranking$Country == input$CountryU, c("year", "RankFloor", "RankCeiling")]
+  N1t <- N1t[with(N1t, order(year)), ]
+  N1t$year <- factor(N1t$year, levels = N1t[["year"]])
+  N1t
+})
+
+renderPlotly({
+  validate(need(nrow(QSt()) > 0, "Нет данных для выбранного периода!"))
+  plot_ly(QSt(), x = ~year, y = ~RankCeiling, type = 'scatter', mode = 'lines',
+        line = list(color = 'black'), #'rgba(0,100,80,1)'
+        showlegend = FALSE) %>%
+  add_trace(y = ~RankFloor, type = 'scatter', mode = 'lines',
+            fill = 'tonexty', fillcolor='gold', line = list(color = 'black'), #rgba(0,100,80,0.2)
+            showlegend = FALSE) %>%
+  layout(title = NULL, 
+         xaxis = list(title = "", titlefont = list(size = 8)),
+         yaxis = list(title = "", autorange="reversed"), 
+         autosize = T, # F, width = 350,  
+         margin = list(l = 30, t = 10, b = 20, r = 20, pad = 4), showlegend = FALSE) %>%
+  config(staticPlot = F, displayModeBar = F, workspace = F, editable = F, sendData = F, displaylogo = F)
+})
+```
+
+### {data-height=250}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(plotly)
+dataQSs <- reactive({
+  yN1s <- plyr::count(ranking[ranking$rGroup == 'Предметный' & ranking$rating == "QS", c('rating', "INSTITUTION", 'Country', "year")])
+  xN1s <- ranking[ranking$rGroup == 'Институциональный' & ranking$rating == "QS", c('rating', "INSTITUTION", 'Country', "year")]
+  xyN1s <- merge(xN1s, yN1s, by = c('rating', "INSTITUTION", 'Country', "year"), all.x = T)
+  xyN1s$freq[is.na(xyN1s$freq)] <- 0
+  xyN1s
+  })
+
+QSst <- reactive({
+  N1st <- dataQSs()
+  N1st <- N1st[N1st$INSTITUTION == input$institution, c("year", "freq")]
+  N1st <- N1st[with(N1st, order(year)), ]
+  names(N1st) <- c("year", "SU") # subject university
+  #
+  N1stM <- dataQSs()
+  N1stM <- aggregate(freq ~ year, N1stM, function(x) round(mean(x), 1))
+  N1stM <- N1stM[with(N1stM, order(year)), ]
+  names(N1stM) <- c("year", "SW") # subject world
+  #
+  N1stMc <- dataQSs()[dataQSs()$Country == input$CountryU, ]
+  N1stMc <- aggregate(freq ~ year, N1stMc, function(x) round(mean(x), 1))
+  N1stMc <- N1stMc[with(N1stMc, order(year)), ]
+  names(N1stMc) <- c("year", "SC") # subject country
+  #
+  N1st <- merge(N1st, N1stM, by = "year")
+  N1st <- merge(N1st, N1stMc, by = "year")
+  N1st
+  })
+
+xU <- reactive({input$CountryU})
+
+renderPlotly({
+  validate(need(nrow(QSst()) > 0, "Нет данных для выбранного периода!"))
+  plot_ly(QSst(), x = ~factor(year), y = ~SU, name = 'University', type = 'scatter', mode = 'lines',  
+          line = list(color = 'gold', width = 4), showlegend = FALSE) %>% 
+  add_trace(y = ~SW, name = 'World', line = list(color = grDevices::adjustcolor("black", alpha.f = 0.6), width = 4)) %>% 
+  add_trace(y = ~SC, name = xU(), line = list(color = 'black', width = 2, dash = 'dash')) %>% # dash = 'dot'
+  layout(title = NULL, 
+         xaxis = list(title = "", titlefont = list(size = 8)), 
+         yaxis = list(title = ""), 
+         autosize = T, 
+         margin = list(l = 30, t = 10, b = 20, r = 20, pad = 4), showlegend = FALSE)  %>%
+  config(staticPlot = F, displayModeBar = F, workspace = F, editable = F, sendData = F, displaylogo = F) 
+})
+```
+
+
+Column {data-width=180}
+-----------------------------------------------------------------------
+
+**Shanghai Ranking**
+
+### {data-height=100}
+
+```{r}
+ARWUI <- reactive({
+  N2 <- ranking$Rank[ranking$rating == "ARWU" & ranking$rGroup == "Институциональный" & ranking$INSTITUTION == input$institution & ranking$Country == input$CountryU & ranking$year == input$yearU]
+  N2 <- ifelse(length(N2) == 0, NA, N2)
+  N2
+  })
+renderValueBox({ 
+    valueBox(renderText(ARWUI()), caption = "Позиция в институциональном рейтинге", color = "skyblue")
+  })
+```
+
+### {data-height=100}
+
+```{r}
+ARWUs <- reactive({
+  N2s <- ranking[ranking$rating == "ARWU" & ranking$rGroup == "Предметный" & ranking$INSTITUTION == input$institution & ranking$Country == input$CountryU & ranking$year == input$yearU, c("Subject", "Rank")]
+  if(nrow(N2s) == 0){ 
+    N2s <- NA } else {
+      N2s <- N2s
+    }
+  N2s
+  })
+renderValueBox({ 
+    valueBox(renderText(nrow(ARWUs())), caption = "Всего предметов", color = "skyblue") #, icon = "glyphicon-indent-left"
+  })
+```
+
+### {data-height=300}
+
+```{r}
+renderDataTable(rownames = FALSE, colnames = c('Предмет', 'Позиция'), { 
+  validate(need(nrow(ARWUs()) > 0, "Нет данных для выбранного периода!"))
+  ARWUs()
+  }, options = list(info = F, paging = F, searching = F, scrollCollapse = T, scrollX = TRUE, sScrollY = '20vh'))
+```
+
+### {data-height=250}
+
+```{r}
+ARWUt <- reactive({
+  N2t <- ranking[ranking$rating == "ARWU" & ranking$rGroup == "Институциональный" & ranking$INSTITUTION == input$institution & ranking$Country == input$CountryU, c("year", "RankFloor", "RankCeiling")]
+  N2t <- N2t[with(N2t, order(year)), ]
+  N2t$year <- factor(N2t$year, levels = N2t[["year"]])
+  N2t
+})
+
+renderPlotly({
+  validate(need(nrow(ARWUt()) > 0, "Нет данных для выбранного периода!"))
+  plot_ly(ARWUt(), x = ~year, y = ~RankCeiling, type = 'scatter', mode = 'lines',
+        line = list(color = 'black'), #'rgba(0,100,80,1)'
+        showlegend = FALSE, name = '') %>%
+  add_trace(y = ~RankFloor, type = 'scatter', mode = 'lines',
+            fill = 'tonexty', fillcolor='skyblue', line = list(color = 'black'), #rgba(0,100,80,0.2)
+            showlegend = FALSE, name = '') %>%
+  layout(title = NULL, 
+         xaxis = list(title = "", titlefont = list(size = 8)),
+         yaxis = list(title = "", autorange="reversed"), 
+         autosize = T, # F, width = 350,  
+         margin = list(l = 30, t = 10, b = 20, r = 20, pad = 4), showlegend = FALSE)  %>%
+    config(staticPlot = F, displayModeBar = F, workspace = F, editable = F, sendData = F, displaylogo = F) 
+})
+```
+
+### {data-height=250}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dataARWUs <- reactive({
+  yN2s <- plyr::count(ranking[ranking$rGroup == 'Предметный' & ranking$rating == "ARWU", c('rating', "INSTITUTION", 'Country', "year")])
+  xN2s <- ranking[ranking$rGroup == 'Институциональный' & ranking$rating == "ARWU", c('rating', "INSTITUTION", 'Country', "year")]
+  xyN2s <- merge(xN2s, yN2s, by = c('rating', "INSTITUTION", 'Country', "year"), all.x = T)
+  xyN2s$freq[is.na(xyN2s$freq)] <- 0
+  xyN2s
+  })
+
+ARWUst <- reactive({
+  N2st <- dataARWUs()
+  N2st <- N2st[N2st$INSTITUTION == input$institution, c("year", "freq")]
+  N2st <- N2st[with(N2st, order(year)), ]
+  names(N2st) <- c("year", "SU") # subject university
+  #
+  N2stM <- dataARWUs()
+  N2stM <- aggregate(freq ~ year, N2stM, function(x) round(mean(x), 1))
+  N2stM <- N2stM[with(N2stM, order(year)), ]
+  names(N2stM) <- c("year", "SW") # subject world
+  #
+  N2stMc <- dataARWUs()[dataARWUs()$Country == input$CountryU, ]
+  N2stMc <- aggregate(freq ~ year, N2stMc, function(x) round(mean(x), 1))
+  N2stMc <- N2stMc[with(N2stMc, order(year)), ]
+  names(N2stMc) <- c("year", "SC") # subject country
+  #
+  N2st <- merge(N2st, N2stM, by = "year")
+  N2st <- merge(N2st, N2stMc, by = "year")
+  N2st
+  })
+
+renderPlotly({
+  validate(need(nrow(ARWUst()) > 0, "Нет данных для выбранного периода!"))
+  plot_ly(ARWUst(), x = ~factor(year), y = ~SU, name = 'University', type = 'scatter', mode = 'lines',  
+          line = list(color = 'skyblue', width = 4), showlegend = FALSE) %>% 
+  add_trace(y = ~SW, name = 'World', line = list(color = grDevices::adjustcolor("black", alpha.f = 0.6), width = 4)) %>% 
+  add_trace(y = ~SC, name = xU(), line = list(color = 'black', width = 2, dash = 'dot')) %>%
+  layout(title = NULL, 
+         xaxis = list(title = "", titlefont = list(size = 8)), 
+         yaxis = list(title = ""), 
+         autosize = T, 
+         margin = list(l = 30, t = 10, b = 20, r = 20, pad = 4), showlegend = FALSE)  %>%
+  config(staticPlot = F, displayModeBar = F, workspace = F, editable = F, sendData = F, displaylogo = F) 
+})
+```
+
+
+
+
+Column {data-width=180}
+-----------------------------------------------------------------------
+
+**Times Higher Education**
+
+### {data-height=100}
+
+```{r}
+THEI <- reactive({
+  N3 <- ranking$Rank[ranking$rating == "THE" & ranking$rGroup == "Институциональный" & ranking$INSTITUTION == input$institution & ranking$Country == input$CountryU & ranking$year == input$yearU]
+  N3 <- ifelse(length(N3) == 0, NA, N3)
+  N3
+  })
+renderValueBox({ 
+    valueBox(renderText(THEI()), caption = "Позиция в институциональном рейтинге", color = "hotpink")
+  })
+```
+
+### {data-height=100}
+
+```{r}
+THEs <- reactive({
+  N3s <- ranking[ranking$rating == "THE" & ranking$rGroup == "Предметный" & ranking$INSTITUTION == input$institution & ranking$Country == input$CountryU & ranking$year == input$yearU, c("Subject", "Rank")]
+  if(nrow(N3s) == 0){ 
+    N3s <- NA } else {
+      N3s <- N3s
+    }
+  N3s
+  })
+renderValueBox({ 
+    valueBox(renderText(nrow(THEs())), caption = "Всего предметов", color = "hotpink") #, icon = "glyphicon-indent-left"
+  })
+```
+
+### {data-height=300}
+
+```{r}
+renderDataTable(rownames = FALSE, colnames = c('Предмет', 'Позиция'), { 
+  validate(need(nrow(THEs()) > 0, "Нет данных для выбранного периода!"))
+  THEs()
+  }, options = list(info = F, paging = F, searching = F, scrollCollapse = T, scrollX = TRUE, sScrollY = '20vh'))
+```
+
+### {data-height=250}
+
+```{r}
+THEt <- reactive({
+  N3t <- ranking[ranking$rating == "THE" & ranking$rGroup == "Институциональный" & ranking$INSTITUTION == input$institution & ranking$Country == input$CountryU, c("year", "RankFloor", "RankCeiling")]
+  N3t <- N3t[with(N3t, order(year)), ]
+  N3t$year <- factor(N3t$year, levels = N3t[["year"]])
+  N3t
+})
+
+renderPlotly({
+  validate(need(nrow(THEt()) > 0, "Нет данных для выбранного периода!"))
+  plot_ly(THEt(), x = ~year, y = ~RankCeiling, type = 'scatter', mode = 'lines',
+        line = list(color = 'black'), #'rgba(0,100,80,1)'
+        showlegend = FALSE, name = NULL) %>%
+  add_trace(y = ~RankFloor, type = 'scatter', mode = 'lines',
+            fill = 'tonexty', fillcolor='hotpink', line = list(color = 'black'), #rgba(0,100,80,0.2)
+            showlegend = FALSE, name = NULL) %>%
+  layout(title = NULL, 
+         xaxis = list(title = "", titlefont = list(size = 8)),
+         yaxis = list(title = "", autorange="reversed"), 
+         autosize = T, # F, width = 350,  
+         margin = list(l = 30, t = 10, b = 20, r = 20, pad = 4), showlegend = FALSE)  %>%
+    config(staticPlot = F, displayModeBar = F, workspace = F, editable = F, sendData = F, displaylogo = F) 
+})
+```
+
+### {data-height=250}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(plotly)
+dataTHEs <- reactive({
+  yN3s <- plyr::count(ranking[ranking$rGroup == 'Предметный' & ranking$rating == "THE", c('rating', "INSTITUTION", 'Country', "year")])
+  xN3s <- ranking[ranking$rGroup == 'Институциональный' & ranking$rating == "THE", c('rating', "INSTITUTION", 'Country', "year")]
+  xyN3s <- merge(xN3s, yN3s, by = c('rating', "INSTITUTION", 'Country', "year"), all.x = T)
+  xyN3s$freq[is.na(xyN3s$freq)] <- 0
+  xyN3s
+  })
+
+THEst <- reactive({
+  N3st <- dataTHEs()
+  N3st <- N3st[N3st$INSTITUTION == input$institution, c("year", "freq")]
+  N3st <- N3st[with(N3st, order(year)), ]
+  names(N3st) <- c("year", "SU") # subject university
+  #
+  N3stM <- dataTHEs()
+  N3stM <- aggregate(freq ~ year, N3stM, function(x) round(mean(x), 1))
+  N3stM <- N3stM[with(N3stM, order(year)), ]
+  names(N3stM) <- c("year", "SW") # subject world
+  #
+  N3stMc <- dataTHEs()[dataTHEs()$Country == input$CountryU, ]
+  N3stMc <- aggregate(freq ~ year, N3stMc, function(x) round(mean(x), 1))
+  N3stMc <- N3stMc[with(N3stMc, order(year)), ]
+  names(N3stMc) <- c("year", "SC") # subject country
+  #
+  N3st <- merge(N3st, N3stM, by = "year")
+  N3st <- merge(N3st, N3stMc, by = "year")
+  N3st
+  })
+
+renderPlotly({
+  validate(need(nrow(THEst()) > 0, "Нет данных для выбранного периода!"))
+  plot_ly(THEst(), x = ~factor(year), y = ~SU, name = 'University', type = 'scatter', mode = 'lines',  
+          line = list(color = 'hotpink', width = 4), showlegend = FALSE) %>% 
+  add_trace(y = ~SW, name = 'World', line = list(color = grDevices::adjustcolor("black", alpha.f = 0.6), width = 4)) %>% 
+  add_trace(y = ~SC, name = xU(), line = list(color = 'black', width = 2, dash = 'dash')) %>%
+  layout(title = NULL, 
+         xaxis = list(title = "", titlefont = list(size = 8)), 
+         yaxis = list(title = ""), 
+         autosize = T, 
+         margin = list(l = 30, t = 10, b = 20, r = 20, pad = 4), showlegend = FALSE)  %>%
+  config(staticPlot = F, displayModeBar = F, workspace = F, editable = F, sendData = F, displaylogo = F) 
+})
+```
+
+
+
+Column {data-width=180}
+-----------------------------------------------------------------------
+
+**U.S. News**
+
+### {data-height=100}
+
+```{r}
+USNewsI <- reactive({
+  N4 <- ranking$Rank[ranking$rating == "USNews" & ranking$rGroup == "Институциональный" & ranking$INSTITUTION == input$institution & ranking$Country == input$CountryU & ranking$year == input$yearU]
+  N4 <- ifelse(length(N4) == 0, NA, N4)
+  N4
+  })
+renderValueBox({ 
+    valueBox(renderText(USNewsI()), caption = "Позиция в институциональном рейтинге", color = "royalblue") #icon = "ion-star", 
+  })
+```
+
+### {data-height=100}
+
+```{r}
+USNewss <- reactive({
+  N4s <- ranking[ranking$rating == "USNews" & ranking$rGroup == "Предметный" & ranking$INSTITUTION == input$institution & ranking$Country == input$CountryU & ranking$year == input$yearU, c("Subject", "Rank")]
+  if(nrow(N4s) == 0){ 
+    N4s <- NA } else {
+      N4s <- N4s
+    }
+  N4s
+  })
+renderValueBox({ 
+    valueBox(renderText(nrow(USNewss())), caption = "Всего предметов", color = "royalblue") #, icon = "glyphicon-indent-left"
+  })
+```
+
+### {data-height=300}
+
+```{r}
+renderDataTable(rownames = FALSE, colnames = c('Предмет', 'Позиция'), { 
+  validate(need(nrow(USNewss()) > 0, "Нет данных для выбранного периода!"))
+  USNewss()
+  }, options = list(info = F, paging = F, searching = F, scrollCollapse = T, scrollX = TRUE, sScrollY = '20vh'))
+```
+
+### {data-height=250}
+
+```{r}
+USNewst <- reactive({
+  N4t <- ranking[ranking$rating == "USNews" & ranking$rGroup == "Институциональный" & ranking$INSTITUTION == input$institution & ranking$Country == input$CountryU, c("year", "RankFloor", "RankCeiling")]
+  N4t <- N4t[with(N4t, order(year)), ]
+  N4t$year <- factor(N4t$year, levels = N4t[["year"]])
+  N4t
+})
+
+renderPlotly({
+  validate(need(nrow(USNewst()) > 0, "Нет данных для выбранного периода!"))
+  plot_ly(USNewst(), x = ~year, y = ~RankCeiling, type = 'scatter', mode = 'lines+markers', 
+        line = list(color = 'black'), #'rgba(0,100,80,1)'
+        showlegend = FALSE, name = 'Min') %>%
+  add_trace(y = ~RankFloor, type = 'scatter', mode = 'lines+markers',
+            fill = 'tonexty', fillcolor='royalblue', line = list(color = 'black'), #rgba(0,100,80,0.2)
+            showlegend = FALSE, name = 'Max') %>%
+  layout(title = NULL, 
+         xaxis = list(title = "", titlefont = list(size = 8)),
+         yaxis = list(title = "", autorange="reversed"), 
+         autosize = T, # F, width = 350,  
+         margin = list(l = 30, t = 10, b = 20, r = 20, pad = 4), showlegend = FALSE)  %>%
+    config(staticPlot = F, displayModeBar = F, workspace = F, editable = F, sendData = F, displaylogo = F) 
+})
+```
+
+### {data-height=250}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(plotly)
+dataUSNewss <- reactive({
+  yN4s <- plyr::count(ranking[ranking$rGroup == 'Предметный' & ranking$rating == "USNews", c('rating', "INSTITUTION", 'Country', "year")])
+  xN4s <- ranking[ranking$rGroup == 'Институциональный' & ranking$rating == "USNews", c('rating', "INSTITUTION", 'Country', "year")]
+  xyN4s <- merge(xN4s, yN4s, by = c('rating', "INSTITUTION", 'Country', "year"), all.x = T)
+  xyN4s$freq[is.na(xyN4s$freq)] <- 0
+  xyN4s
+  })
+
+USNewsst <- reactive({
+  N4st <- dataUSNewss()
+  N4st <- N4st[N4st$INSTITUTION == input$institution, c("year", "freq")]
+  N4st <- N4st[with(N4st, order(year)), ]
+  names(N4st) <- c("year", "SU") # subject university
+  #
+  N4stM <- dataUSNewss()
+  N4stM <- aggregate(freq ~ year, N4stM, function(x) round(mean(x), 1))
+  N4stM <- N4stM[with(N4stM, order(year)), ]
+  names(N4stM) <- c("year", "SW") # subject world
+  #
+  N4stMc <- dataUSNewss()[dataUSNewss()$Country == input$CountryU, ]
+  N4stMc <- aggregate(freq ~ year, N4stMc, function(x) round(mean(x), 1))
+  N4stMc <- N4stMc[with(N4stMc, order(year)), ]
+  names(N4stMc) <- c("year", "SC") # subject country
+  #
+  N4st <- merge(N4st, N4stM, by = "year")
+  N4st <- merge(N4st, N4stMc, by = "year")
+  N4st
+  })
+
+renderPlotly({
+  validate(need(nrow(USNewsst()) > 0, "Нет данных для выбранного периода!"))
+  plot_ly(USNewsst(), x = ~factor(year), y = ~SU, name = 'University', type = 'scatter', mode = 'lines',  
+          line = list(color = 'hotpink', width = 4), showlegend = FALSE) %>% 
+  add_trace(y = ~SW, name = 'World', line = list(color = grDevices::adjustcolor("black", alpha.f = 0.6), width = 4)) %>% 
+  add_trace(y = ~SC, name = xU(), line = list(color = 'black', width = 2, dash = 'dash')) %>%
+  layout(title = NULL, 
+         xaxis = list(title = "", titlefont = list(size = 8)), 
+         yaxis = list(title = ""), 
+         autosize = T, 
+         margin = list(l = 30, t = 10, b = 20, r = 20, pad = 4), showlegend = FALSE)  %>%
+  config(staticPlot = F, displayModeBar = F, workspace = F, editable = F, sendData = F, displaylogo = F) 
+})
+```
+
+
+
+Compare {data-navmenu="University"}
+=====================================
+
+Column {data-width=200}
+-------------------------------------
+   
+### **Фильтры** {data-height=460} 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, error=FALSE}
+h5('Выберите рейтинг')
+radioButtons('ratingUC', NULL, sort(unique(ranking$rating)), selected = "QS", inline = T, width = '100%')
+h5('Выберите страны')
+selectInput('CountryUC', NULL, sort(unique(ranking$Country)), selected = "Russia", multiple = T, width = '100%')
+h5('Выберите университеты')
+renderUI({
+  selectizeInput('institutionC', NULL, selected = c("National Research University Higher School of Economics", "Lomonosov Moscow State University"), choices = sort(unique(ranking$INSTITUTION[ranking$Country %in% input$CountryUC])), multiple = T,  width = '100%')
+  })
+```
+
+Column {data-width=800}
+-------------------------------------
+
+### **Сравнение вузов в институциональном рейтинге** {data-height=500}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+dataCompare <- reactive({
+  NC <- ranking[ranking$rating == input$ratingUC & ranking$rGroup == "Институциональный" & ranking$INSTITUTION %in% input$institutionC & ranking$Country %in% input$CountryUC, c("INSTITUTION", "year", "Rank", "RankFloor", "RankCeiling", "TotalScore")]
+  NC <- NC[with(NC, order(INSTITUTION, year)), ]
+  NC$year <- factor(NC$year, levels = sort(unique(ranking$year)))
+  NC
+})
+
+xUC <- reactive(input$ratingUC)
+
+renderPlotly({
+  plot_ly(dataCompare(), x = ~ year, y = ~ RankFloor, color = ~ INSTITUTION, type = 'scatter', mode = 'lines', hoverinfo = "x+text+name", text = ~paste0('Позиция: ', Rank), line = list(width = 5)) %>% # text = ~paste0('Год: ', year, '</br>Позиция: ', Rank)
+  #add_text(text = dataCompare()$Rank, textfont = list(size = 12, color = ~ INSTITUTION), textposition = "top left") %>% 
+  layout(title = paste0(xUC(), ": Динамика позиций выбранных вузов (верхняя граница)"), 
+         xaxis = list(title = "", titlefont = list(size = 8)),
+         yaxis = list(title = "", autorange="reversed"),
+         legend = list(orientation = 'h', font = list(size = 14)), # xanchor = "left", yanchor = "bottom", x = 0, y = -0.3), 
+         margin = list(l=50, r=50, b=30, t=50, pad=4)) %>%
+  config(staticPlot = F, displayModeBar = T, workspace = F, editable = F, sendData = F, displaylogo = F, modeBarButtonsToRemove = list('sendDataToCloud','resetScale2d','hoverClosestGl2d','hoverClosestPie','hoverClosestCartesian','hoverCompareCartesian','toggleHover','resetViews','zoom2d','pan2d','select2d','lasso2d','zoomInGeo','zoomOutGeo','resetGeo','hoverClosestGeo','Сollaborate','zoomIn2d','zoomOut2d','autoScale2d'))
+})
+```
+
+
+
